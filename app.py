@@ -43,13 +43,31 @@ else:
         moje_dyzury = grafik[grafik['Pracownik'] == st.session_state['user']]
         st.dataframe(moje_dyzury, use_container_width=True)
 
-    elif menu == "Zgłoś dostępność":
+   elif menu == "Zgłoś dostępność":
         st.header("📝 Zgłoś kiedy możesz pracować")
         with st.form("form_dostepnosc"):
             data = st.date_input("Dzień")
             zmiana = st.selectbox("Zmiana", ["Dzień", "Noc", "Doba"])
             uwagi = st.text_input("Uwagi")
             submit = st.form_submit_button("Wyślij do bazy")
+            
+            if submit:
+                # Przygotowanie danych do zapisu
+                nowe_dane = pd.DataFrame([
+                    {
+                        "Data": data.strftime("%Y-%m-%d"),
+                        "Pracownik": st.session_state['user'],
+                        "Zmiana": zmiana,
+                        "Uwagi": uwagi
+                    }
+                ])
+                
+                # Pobieramy aktualne dane, dodajemy nowy wiersz i wysyłamy całość
+                stara_dostepnosc = pobierz_dane("Dyspozycyjność")
+                aktualna_dostepnosc = pd.concat([stara_dostepnosc, nowe_dane], ignore_index=True)
+                
+                conn.update(spreadsheet=URL_ARKUSZA, worksheet="Dyspozycyjność", data=aktualna_dostepnosc)
+                st.success("✅ Twoja dostępność została zapisana w arkuszu!")
             
             if submit:
                 # Tu w przyszłości dodamy kod dopisujący wiersz do Arkusza
