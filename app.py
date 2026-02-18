@@ -7,12 +7,12 @@ st.set_page_config(page_title="Grafik Pogotowie", layout="wide")
 # Podłączamy się do Arkusza
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# --- TUTAJ WKLEJ LINK DO SWOJEGO ARKUSZA ---
+# --- TWÓJ LINK DO ARKUSZA ---
 URL_ARKUSZA = "https://docs.google.com/spreadsheets/d/1aOLREIfSOMpVYadu0_TKuXa_KO723rwHRGtWAC2vW2Y/edit?gid=0#gid=0"
 
-# Funkcja pobierająca dane
+# Funkcja pobierająca dane (ttl=0 zapewnia odświeżanie danych na żywo)
 def pobierz_dane(nazwa_karty):
-    return conn.read(spreadsheet=URL_ARKUSZA, worksheet=nazwa_karty)
+    return conn.read(spreadsheet=URL_ARKUSZA, worksheet=nazwa_karty, ttl=0)
 
 # --- PROSTE LOGOWANIE ---
 if 'user' not in st.session_state:
@@ -22,7 +22,6 @@ if st.session_state['user'] is None:
     st.title("🚑 System Grafik - Logowanie")
     email = st.text_input("Podaj swój e-mail z listy pracowników")
     if st.button("Zaloguj się"):
-        # Sprawdzamy czy e-mail jest w tabeli Pracownicy
         pracownicy = pobierz_dane("Pracownicy")
         if email in pracownicy['Email'].values:
             st.session_state['user'] = email
@@ -43,7 +42,7 @@ else:
         moje_dyzury = grafik[grafik['Pracownik'] == st.session_state['user']]
         st.dataframe(moje_dyzury, use_container_width=True)
 
-   elif menu == "Zgłoś dostępność":
+    elif menu == "Zgłoś dostępność":
         st.header("📝 Zgłoś kiedy możesz pracować")
         with st.form("form_dostepnosc"):
             data = st.date_input("Dzień")
@@ -62,19 +61,19 @@ else:
                     }
                 ])
                 
-                # Pobieramy aktualne dane, dodajemy nowy wiersz i wysyłamy całość
+                # Pobieramy aktualne dane i dodajemy nowy wiersz
                 stara_dostepnosc = pobierz_dane("Dyspozycyjność")
                 aktualna_dostepnosc = pd.concat([stara_dostepnosc, nowe_dane], ignore_index=True)
                 
+                # Wysyłamy aktualizację do Google Sheets
                 conn.update(spreadsheet=URL_ARKUSZA, worksheet="Dyspozycyjność", data=aktualna_dostepnosc)
                 st.success("✅ Twoja dostępność została zapisana w arkuszu!")
-            
-            if submit:
-                # Tu w przyszłości dodamy kod dopisujący wiersz do Arkusza
-                st.success("Zgłoszenie zostało wysłane (podgląd w Arkuszu Google)!")
 
     elif menu == "Zamiany":
         st.header("🔄 Giełda zamian")
         grafik = pobierz_dane("Grafik_Zatwierdzony")
         do_zamiany = grafik[grafik['Status Zamiany'] == "SZUKAM ZASTĘPSTWA"]
-        st.table(do_zamiany)
+        if do_zamiany.empty:
+            st.info("Obecnie nie ma żadnych dyżurów na zamianę.")
+        else:
+            st.table(do_zamiany)
