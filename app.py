@@ -9,7 +9,7 @@ st.set_page_config(page_title="System Grafik - Pogotowie", layout="wide")
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 # --- TUTAJ WKLEJ SWÓJ LINK DO ARKUSZA ---
-URL_ARKUSZA = "https://docs.google.com/spreadsheets/d/1aOLREIfSOMpVYadu0_TKuXa_KO723rwHRGtWAC2vW2Y/edit?usp=sharing"
+URL_ARKUSZA = "https://docs.google.com/spreadsheets/d/1aOLREIfSOMpVYadu0_TKuXa_KO723rwHRGtWAC2vW2Y/edit?gid=1585384814#gid=1585384814"
 
 # Funkcja pobierająca dane (ttl=0 wyłącza pamięć podręczną, dane są zawsze świeże)
 def pobierz_dane(nazwa_karty):
@@ -115,4 +115,9 @@ else:
         grafik_full = pobierz_dane("Grafik_Zatwierdzony")
         
         if not grafik_full.empty:
-            zamiany = grafik_full[grafik_full['Status
+            zamiany = grafik_full[grafik_full['Status Zamiany'] == "SZUKAM ZASTĘPSTWA"]
+            if zamiany.empty:
+                st.info("Obecnie brak ofert zamiany.")
+            else:
+                st.table(zamiany[["Data", "Pracownik", "Zmiana", "Uwagi"]])
+                st.info("Aby przejąć dyżur, skontaktuj się bezpośrednio z pracownikiem lub koordynatorem.")
