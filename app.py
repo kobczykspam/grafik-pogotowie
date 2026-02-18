@@ -9,7 +9,7 @@ st.set_page_config(page_title="System Grafik - Pogotowie", layout="wide")
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 # --- TUTAJ WKLEJ SWÓJ LINK DO ARKUSZA ---
-URL_ARKUSZA = "https://docs.google.com/spreadsheets/d/1aOLREIfSOMpVYadu0_TKuXa_KO723rwHRGtWAC2vW2Y/edit?gid=1585384814#gid=1585384814"
+URL_ARKUSZA = "https://docs.google.com/spreadsheets/d/1aOLREIfSOMpVYadu0_TKuXa_KO723rwHRGtWAC2vW2Y/edit?gid=0#gid=0"
 
 # Funkcja pobierająca dane (ttl=0 wyłącza pamięć podręczną, dane są zawsze świeże)
 def pobierz_dane(nazwa_karty):
