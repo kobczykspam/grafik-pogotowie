@@ -2,78 +2,117 @@ import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 
-st.set_page_config(page_title="Grafik Pogotowie", layout="wide")
+# Konfiguracja strony
+st.set_page_config(page_title="System Grafik - Pogotowie", layout="wide")
 
-# Podłączamy się do Arkusza
+# Połączenie z Google Sheets
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-# --- TWÓJ LINK DO ARKUSZA ---
-URL_ARKUSZA = "https://docs.google.com/spreadsheets/d/1aOLREIfSOMpVYadu0_TKuXa_KO723rwHRGtWAC2vW2Y/edit?gid=0#gid=0"
+# --- TUTAJ WKLEJ SWÓJ LINK DO ARKUSZA ---
+URL_ARKUSZA = "https://docs.google.com/spreadsheets/d/1aOLREIfSOMpVYadu0_TKuXa_KO723rwHRGtWAC2vW2Y/edit?usp=sharing"
 
-# Funkcja pobierająca dane (ttl=0 zapewnia odświeżanie danych na żywo)
+# Funkcja pobierająca dane (ttl=0 wyłącza pamięć podręczną, dane są zawsze świeże)
 def pobierz_dane(nazwa_karty):
-    return conn.read(spreadsheet=URL_ARKUSZA, worksheet=nazwa_karty, ttl=0)
+    try:
+        return conn.read(spreadsheet=URL_ARKUSZA, worksheet=nazwa_karty, ttl=0)
+    except Exception as e:
+        st.error(f"Błąd podczas pobierania karty {nazwa_karty}: {e}")
+        return pd.DataFrame()
 
-# --- PROSTE LOGOWANIE ---
+# Obsługa sesji użytkownika
 if 'user' not in st.session_state:
     st.session_state['user'] = None
 
+# --- EKRAN LOGOWANIA ---
 if st.session_state['user'] is None:
     st.title("🚑 System Grafik - Logowanie")
-    email = st.text_input("Podaj swój e-mail z listy pracowników")
+    email_input = st.text_input("Podaj swój e-mail służbowy:")
     if st.button("Zaloguj się"):
         pracownicy = pobierz_dane("Pracownicy")
-        if email in pracownicy['Email'].values:
-            st.session_state['user'] = email
-            st.rerun()
+        if not pracownicy.empty and 'Email' in pracownicy.columns:
+            # Standaryzacja na małe litery
+            lista_maili = pracownicy['Email'].str.lower().str.strip().values
+            if email_input.lower().strip() in lista_maili:
+                st.session_state['user'] = email_input.lower().strip()
+                st.success("Zalogowano pomyślnie!")
+                st.rerun()
+            else:
+                st.error("Nie znaleziono tego adresu e-mail na liście pracowników.")
         else:
-            st.error("Nie znaleziono takiego e-maila w bazie!")
+            st.error("Błąd bazy danych: Brak kolumny 'Email' w karcie Pracownicy.")
+
+# --- PANEL PO ZALOGOWANIU ---
 else:
-    st.sidebar.write(f"Zalogowany: **{st.session_state['user']}**")
+    st.sidebar.title("🚑 Panel Pracownika")
+    st.sidebar.info(f"Zalogowany: \n{st.session_state['user']}")
+    
+    menu = st.sidebar.radio("Nawigacja:", ["Mój Grafik", "Zgłoś dostępność", "Giełda zamian"])
+    
     if st.sidebar.button("Wyloguj"):
         st.session_state['user'] = None
         st.rerun()
 
-    menu = st.sidebar.radio("Menu", ["Mój Grafik", "Zgłoś dostępność", "Zamiany"])
-
+    # --- WIDOK: MÓJ GRAFIK ---
     if menu == "Mój Grafik":
-        st.header("📅 Twój Grafik")
+        st.header("📅 Twoje zaplanowane dyżury")
         grafik = pobierz_dane("Grafik_Zatwierdzony")
-        moje_dyzury = grafik[grafik['Pracownik'] == st.session_state['user']]
-        st.dataframe(moje_dyzury, use_container_width=True)
+        
+        if not grafik.empty:
+            moje_dyzury = grafik[grafik['Pracownik'].str.lower() == st.session_state['user']].copy()
+            
+            if moje_dyzury.empty:
+                st.info("Nie masz przypisanych dyżurów w obecnym grafiku.")
+            else:
+                st.dataframe(moje_dyzury, use_container_width=True)
+                
+                # SEKCJA WYSTAWIANIA NA ZAMIANĘ
+                st.write("---")
+                st.subheader("🔄 Chcesz oddać dyżur?")
+                opcje = moje_dyzury.apply(lambda x: f"{x['Data']} - {x['Zmiana']}", axis=1).tolist()
+                wybor = st.selectbox("Wybierz dyżur do wystawienia na zamianę:", ["---"] + opcje)
+                
+                if st.button("Wystaw na giełdę zamian"):
+                    if wybor != "---":
+                        # Znalezienie wiersza w oryginalnym grafiku
+                        idx = moje_dyzury.index[opcje.index(wybor)]
+                        grafik.at[idx, 'Status Zamiany'] = "SZUKAM ZASTĘPSTWA"
+                        
+                        conn.update(spreadsheet=URL_ARKUSZA, worksheet="Grafik_Zatwierdzony", data=grafik)
+                        st.success(f"Dyżur {wybor} jest teraz widoczny na giełdzie!")
+                        st.rerun()
+        else:
+            st.warning("Nie udało się załadować danych grafiku.")
 
+    # --- WIDOK: ZGŁOŚ DOSTĘPNOŚĆ ---
     elif menu == "Zgłoś dostępność":
-        st.header("📝 Zgłoś kiedy możesz pracować")
-        with st.form("form_dostepnosc"):
-            data = st.date_input("Dzień")
-            zmiana = st.selectbox("Zmiana", ["Dzień", "Noc", "Doba"])
-            uwagi = st.text_input("Uwagi")
-            submit = st.form_submit_button("Wyślij do bazy")
+        st.header("📝 Zgłoś swoją dyspozycyjność")
+        st.write("Wybierz dni i zmiany, w których możesz pracować w przyszłym miesiącu.")
+        
+        with st.form("form_dostep", clear_on_submit=True):
+            d_data = st.date_input("Data dyżuru")
+            d_zmiana = st.selectbox("Preferowana zmiana", ["Dzień", "Noc", "Doba"])
+            d_uwagi = st.text_input("Dodatkowe uwagi")
+            submit = st.form_submit_button("Wyślij zgłoszenie")
             
             if submit:
-                # Przygotowanie danych do zapisu
-                nowe_dane = pd.DataFrame([
-                    {
-                        "Data": data.strftime("%Y-%m-%d"),
-                        "Pracownik": st.session_state['user'],
-                        "Zmiana": zmiana,
-                        "Uwagi": uwagi
-                    }
-                ])
-                
-                # Pobieramy aktualne dane i dodajemy nowy wiersz
                 stara_dostepnosc = pobierz_dane("Dyspozycyjność")
-                aktualna_dostepnosc = pd.concat([stara_dostepnosc, nowe_dane], ignore_index=True)
+                nowy_wiersz = pd.DataFrame([{
+                    "Data": d_data.strftime("%Y-%m-%d"),
+                    "Pracownik": st.session_state['user'],
+                    "Zmiana": d_zmiana,
+                    "Uwagi": d_uwagi
+                }])
+                aktualna = pd.concat([stara_dostepnosc, nowy_wiersz], ignore_index=True)
                 
-                # Wysyłamy aktualizację do Google Sheets
-                conn.update(spreadsheet=URL_ARKUSZA, worksheet="Dyspozycyjność", data=aktualna_dostepnosc)
-                st.success("✅ Twoja dostępność została zapisana w arkuszu!")
+                conn.update(spreadsheet=URL_ARKUSZA, worksheet="Dyspozycyjność", data=aktualna)
+                st.success("Zgłoszenie zostało zapisane w bazie!")
+                st.balloons()
 
-    elif menu == "Zamiany":
-        st.header("🔄 Giełda zamian")
-        grafik = pobierz_dane("Grafik_Zatwierdzony")
-        do_zamiany = grafik[grafik['Status Zamiany'] == "SZUKAM ZASTĘPSTWA"]
-        if do_zamiany.empty:
-            st.info("Obecnie nie ma żadnych dyżurów na zamianę.")
-        else:
-            st.table(do_zamiany)
+    # --- WIDOK: GIEŁDA ZAMIAN ---
+    elif menu == "Giełda zamian":
+        st.header("🔄 Dyżury do przejęcia")
+        st.write("Poniżej znajdują się dyżury wystawione przez innych pracowników.")
+        grafik_full = pobierz_dane("Grafik_Zatwierdzony")
+        
+        if not grafik_full.empty:
+            zamiany = grafik_full[grafik_full['Status
